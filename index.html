@@ -11,8 +11,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --navy:#142848; --navy-light:#20345c; --teal:#0e8a83; --teal-light:#14b3a8;
@@ -210,19 +208,6 @@ table.report-table tr:hover td{background:#fafbfc;}
 <div id="app"></div>
 
 <script>
-/* ===================== FIREBASE ===================== */
-const firebaseConfig = {
-  apiKey: "AIzaSyAHpChFgv5GaHTbVvYyRNFLoxOnbPszm2Q",
-  authDomain: "asistencia-personal-94128.firebaseapp.com",
-  projectId: "asistencia-personal-94128",
-  storageBucket: "asistencia-personal-94128.firebasestorage.app",
-  messagingSenderId: "990458841430",
-  appId: "1:990458841430:web:50b3aeb162a5f53836eef7",
-  measurementId: "G-6DDGVX2S0T"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
 /* ===================== ESTADO Y UTILIDADES ===================== */
 const App = {
   view: 'home',
@@ -251,55 +236,28 @@ function showToast(msg){
   setTimeout(()=>t.remove(), 2600);
 }
 
-/* ---------- Firestore helpers (compartido entre dispositivos) ---------- */
-async function loadConfig(){
-  try{
-    const doc = await db.collection('config').doc('main').get();
-    return doc.exists ? doc.data() : null;
-  }catch(e){ console.error('loadConfig', e); return null; }
+/* ---------- Storage helpers (shared across devices) ---------- */
+async function storeGet(key){
+  try{ const r = await window.storage.get(key, true); return r ? JSON.parse(r.value) : null; }
+  catch(e){ return null; }
 }
-async function saveConfig(cfg){
-  try{ await db.collection('config').doc('main').set(cfg); return true; }
-  catch(e){ console.error('saveConfig', e); return false; }
+async function storeSet(key, val){
+  try{ await window.storage.set(key, JSON.stringify(val), true); return true; }
+  catch(e){ console.error('storage set fail', key, e); return false; }
 }
-async function loadEmployees(){
-  try{
-    const snap = await db.collection('employees').get();
-    return snap.docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> (a.nombre||'').localeCompare(b.nombre||''));
-  }catch(e){ console.error('loadEmployees', e); return []; }
+async function photoGet(id){
+  try{ const r = await window.storage.get('photo:'+id, true); return r ? r.value : null; }
+  catch(e){ return null; }
 }
-async function saveEmployee(emp){
-  try{
-    await db.collection('employees').doc(emp.id).set({
-      nombre: emp.nombre, puesto: emp.puesto, creado: emp.creado, activo: emp.activo
-    });
-    return true;
-  }catch(e){ console.error('saveEmployee', e); return false; }
-}
-async function deleteEmployeeDoc(id){
-  try{ await db.collection('employees').doc(id).delete(); return true; }
-  catch(e){ console.error('deleteEmployeeDoc', e); return false; }
-}
-async function addRecordDoc(rec){
-  try{ await db.collection('records').doc(rec.id).set(rec); return true; }
-  catch(e){ console.error('addRecordDoc', e); return false; }
-}
-async function getTodayRecordsForEmployee(employeeId, fecha){
-  try{
-    const snap = await db.collection('records').where('fecha','==',fecha).get();
-    return snap.docs.map(d=>d.data()).filter(r=>r.employeeId===employeeId);
-  }catch(e){ console.error('getTodayRecordsForEmployee', e); return []; }
-}
-async function getRecordsInRange(dateFrom, dateTo){
-  try{
-    const snap = await db.collection('records').where('fecha','>=',dateFrom).where('fecha','<=',dateTo).get();
-    return snap.docs.map(d=>d.data());
-  }catch(e){ console.error('getRecordsInRange', e); return []; }
+async function photoSet(id, dataUrl){
+  try{ await window.storage.set('photo:'+id, dataUrl, true); return true; }
+  catch(e){ console.error('photo save fail', e); return false; }
 }
 
 async function loadAll(){
-  App.config = await loadConfig();
-  App.employees = await loadEmployees();
+  App.employees = (await storeGet('employees')) || [];
+  App.records = (await storeGet('records')) || [];
+  App.config = await storeGet('config');
 }
 
 /* ===================== ROUTER ===================== */
@@ -345,13 +303,9 @@ function renderHome(){
       </button>
     </div>
   </div>`;
-  document.getElementById('goKiosk').onclick = async ()=>{
-    App.employees = await loadEmployees();
-    App.view='kiosk'; render();
-  };
+  document.getElementById('goKiosk').onclick = ()=>{ App.view='kiosk'; render(); };
   document.getElementById('goAdmin').onclick = async ()=>{
-    App.config = await loadConfig();
-    App.employees = await loadEmployees();
+    App.config = await storeGet('config');
     App.view = App.config ? 'admin-login' : 'admin-setup';
     render();
   };
@@ -376,7 +330,7 @@ function renderAdminSetup(){
     const err=document.getElementById('setupError');
     if(pw1.length<4){ err.innerHTML='<div class="error-msg">La contraseña debe tener al menos 4 caracteres.</div>'; return; }
     if(pw1!==pw2){ err.innerHTML='<div class="error-msg">Las contraseñas no coinciden.</div>'; return; }
-    await saveConfig({password: pw1});
+    await storeSet('config', {password: pw1});
     App.config = {password:pw1};
     App.adminAuthed = true;
     App.view='admin-dashboard'; App.adminTab='empleados'; render();
@@ -453,10 +407,8 @@ function renderEmpleadosTab(container){
     const err = document.getElementById('empError');
     if(!nombre){ err.innerHTML='<div class="error-msg">Escribe el nombre del empleado.</div>'; return; }
     const emp = { id: uid('EMP'), nombre, puesto: puesto||'—', creado: new Date().toISOString(), activo:true };
-    const btn = document.getElementById('addEmpBtn'); btn.disabled = true; btn.textContent='Guardando…';
-    const ok = await saveEmployee(emp);
-    if(!ok){ err.innerHTML='<div class="error-msg">No se pudo guardar. Revisa tu conexión e intenta de nuevo.</div>'; btn.disabled=false; btn.textContent='+ Generar QR'; return; }
-    App.employees = await loadEmployees();
+    App.employees.push(emp);
+    await storeSet('employees', App.employees);
     renderEmpleadosTab(container);
   };
   renderEmpGrid();
@@ -501,8 +453,8 @@ function renderEmpGrid(){
     card.querySelector('[data-act="badge"]').onclick = ()=> downloadBadge(emp);
     card.querySelector('[data-act="del"]').onclick = async ()=>{
       if(!confirm(`¿Eliminar a ${emp.nombre}? Sus registros históricos se conservarán.`)) return;
-      await deleteEmployeeDoc(id);
       App.employees = App.employees.filter(x=>x.id!==id);
+      await storeSet('employees', App.employees);
       renderEmpGrid();
     };
   });
@@ -551,14 +503,7 @@ function renderConfigTab(container){
       <div class="field"><label>Contraseña nueva</label><input type="password" id="cfgNew"></div>
       <button class="btn btn-primary" id="cfgBtn">Actualizar contraseña</button>
       <p class="hint">Esta contraseña la comparten todos los que abran el panel administrativo en cualquier dispositivo.</p>
-    </div>
-    <div class="panel" style="max-width:520px;">
-      <div class="section-title"><h2>Importar empleados guardados</h2></div>
-      <p class="hint" style="margin-top:0; margin-bottom:12px;">Se cargaron automáticamente los 19 empleados de tu registro anterior. Presiona el botón para guardarlos en esta base de datos (solo hace falta hacerlo una vez).</p>
-      <div id="importStatus"></div>
-      <button class="btn btn-coral" id="importBtn">Importar 19 empleados</button>
-    </div>
-  `;
+    </div>`;
   document.getElementById('cfgBtn').onclick = async ()=>{
     const cur = document.getElementById('cfgCurrent').value;
     const nw = document.getElementById('cfgNew').value;
@@ -566,25 +511,8 @@ function renderConfigTab(container){
     if(cur !== App.config.password){ err.innerHTML='<div class="error-msg">La contraseña actual no coincide.</div>'; return; }
     if(nw.length<4){ err.innerHTML='<div class="error-msg">La nueva contraseña debe tener al menos 4 caracteres.</div>'; return; }
     App.config.password = nw;
-    await saveConfig(App.config);
+    await storeSet('config', App.config);
     err.innerHTML = '<div class="hint" style="color:var(--success)">Contraseña actualizada correctamente.</div>';
-  };
-
-  document.getElementById('importBtn').onclick = async ()=>{
-    const btn = document.getElementById('importBtn');
-    const status = document.getElementById('importStatus');
-    btn.disabled = true; btn.textContent = 'Importando…';
-    const empleadosPrevios = [{"id":"EMP-MSNXFGWH91D","nombre":"Daysi Zuniga","puesto":"A/E","creado":"2026-08-11T00:33:06.641Z","activo":true},{"id":"EMP-MSNXGBIX71G","nombre":"Li. Sofia Cabrera","puesto":"Lic. Enfermeria","creado":"2026-08-11T00:33:46.329Z","activo":true},{"id":"EMP-MSNXGXBTW2N","nombre":"Efrain Estevez","puesto":"A/E","creado":"2026-08-11T00:34:14.585Z","activo":true},{"id":"EMP-MSNXHHH5VC2","nombre":"Dra. Francis Guimel Rivera","puesto":"Dra","creado":"2026-08-11T00:34:40.697Z","activo":true},{"id":"EMP-MSNXIPL50YE","nombre":"Osiris Melendez","puesto":"A/E","creado":"2026-08-11T00:35:37.865Z","activo":true},{"id":"EMP-MSNXJH49P2M","nombre":"Glendy Barahora","puesto":"A/E","creado":"2026-08-11T00:36:13.545Z","activo":true},{"id":"EMP-MSNXK95T3MT","nombre":"Jexon Caballero","puesto":"A/E","creado":"2026-08-11T00:36:49.889Z","activo":true},{"id":"EMP-MSNXNXG0YGN","nombre":"Lic Sheyla Hernandez","puesto":"Lic Enfermeria","creado":"2026-08-11T00:39:41.328Z","activo":true},{"id":"EMP-MSNXOPWGVP0","nombre":"Alexa Katherine","puesto":"A/E","creado":"2026-08-11T00:40:18.208Z","activo":true},{"id":"EMP-MSNXPRYWX5Y","nombre":"Maritza Bonilla","puesto":"Cocina","creado":"2026-08-11T00:41:07.544Z","activo":true},{"id":"EMP-MSNXQA28V7X","nombre":"Carol","puesto":"Aseo","creado":"2026-08-11T00:41:30.992Z","activo":true},{"id":"EMP-MSNXQSIGQXL","nombre":"Miguel","puesto":"Mantenimiento","creado":"2026-08-11T00:41:54.904Z","activo":true},{"id":"EMP-MSNXS9FSV9A","nombre":"Maria Sara","puesto":"A/E","creado":"2026-08-11T00:43:03.496Z","activo":true},{"id":"EMP-MSNXSQ3SR16","nombre":"Dr Ortega","puesto":"Dr","creado":"2026-08-11T00:43:25.096Z","activo":true},{"id":"EMP-MSNXT6YWN2A","nombre":"Dr. Daniel Osegueda","puesto":"Dr","creado":"2026-08-11T00:43:46.952Z","activo":true},{"id":"EMP-MSNXTPDC280","nombre":"Dr. Emilio Osegueda","puesto":"Dr","creado":"2026-08-11T00:44:10.800Z","activo":true},{"id":"EMP-MSNXU8DBSFZ","nombre":"Dr. Montalvan","puesto":"Dr","creado":"2026-08-11T00:44:35.423Z","activo":true},{"id":"EMP-MSNXUQBSEHQ","nombre":"Dr Carlos Enamorado","puesto":"Dr","creado":"2026-08-11T00:44:58.696Z","activo":true},{"id":"EMP-MSNXV9FZAGQ","nombre":"Dra Ingrid Morales","puesto":"Dra","creado":"2026-08-11T00:45:23.471Z","activo":true}];
-    let ok=0, fail=0;
-    for(const e of empleadosPrevios){
-      const success = await saveEmployee(e);
-      if(success) ok++; else fail++;
-      status.innerHTML = `<div class="hint">Importando… ${ok+fail}/${empleadosPrevios.length}</div>`;
-    }
-    App.employees = await loadEmployees();
-    status.innerHTML = `<div class="hint" style="color:var(--success)">Listo: ${ok} empleados importados${fail? ', '+fail+' fallaron':''}. Ve a la pestaña Empleados para verlos.</div>`;
-    btn.textContent = 'Importar 19 empleados';
-    btn.disabled = false;
   };
 }
 
@@ -653,8 +581,7 @@ async function generateReport(){
   const dateFrom = `${month}-${String(dayFrom).padStart(2,'0')}`;
   const dateTo = `${month}-${String(dayTo).padStart(2,'0')}`;
 
-  panel.innerHTML = '<div class="empty-state"><div class="ic">⏳</div>Cargando registros…</div>';
-  let recs = await getRecordsInRange(dateFrom, dateTo);
+  let recs = App.records.filter(r => r.fecha >= dateFrom && r.fecha <= dateTo);
   if(empFilter!=='all') recs = recs.filter(r=>r.employeeId===empFilter);
 
   // Agrupar por empleado + fecha
@@ -680,9 +607,9 @@ async function generateReport(){
         empleado: emp ? emp.nombre : '(empleado eliminado)',
         empId, fecha,
         entrada: s.entrada ? fmtTime(s.entrada.timestamp) : '—',
-        entradaFoto: s.entrada ? (s.entrada.foto || null) : null,
+        entradaId: s.entrada ? s.entrada.id : null,
         salida: s.salida ? fmtTime(s.salida.timestamp) : '— (pendiente)',
-        salidaFoto: s.salida ? (s.salida.foto || null) : null,
+        salidaId: s.salida ? s.salida.id : null,
         horas: minutos!==null ? (minutos/60).toFixed(2) : '—',
       });
     });
@@ -716,9 +643,9 @@ async function generateReport(){
             <td>${esc(r.empleado)}</td>
             <td>${fmtDate(r.fecha)}</td>
             <td><span class="badge entrada">${r.entrada}</span></td>
-            <td>${r.entradaFoto ? `<img class="thumb photo-btn" data-src="${r.entradaFoto}" src="${r.entradaFoto}" alt="foto">` : '—'}</td>
+            <td>${r.entradaId ? `<img class="thumb photo-btn" data-rid="${r.entradaId}" src="" alt="foto">` : '—'}</td>
             <td><span class="badge salida">${r.salida}</span></td>
-            <td>${r.salidaFoto ? `<img class="thumb photo-btn" data-src="${r.salidaFoto}" src="${r.salidaFoto}" alt="foto">` : '—'}</td>
+            <td>${r.salidaId ? `<img class="thumb photo-btn" data-rid="${r.salidaId}" src="" alt="foto">` : '—'}</td>
             <td class="mono">${r.horas}</td>
           </tr>`).join('')}
       </tbody>
@@ -733,8 +660,12 @@ async function generateReport(){
   document.getElementById('dlExcel').onclick = ()=>exportExcel(currentReport, periodoLabel);
   document.getElementById('dlPdf').onclick = ()=>exportPdf(currentReport, periodoLabel);
 
-  panel.querySelectorAll('.photo-btn').forEach(img=>{
-    img.onclick = ()=>openPhotoModal(img.dataset.src);
+  // Cargar miniaturas de foto de forma perezosa
+  panel.querySelectorAll('.photo-btn').forEach(async img=>{
+    const rid = img.dataset.rid;
+    const data = await photoGet(rid);
+    if(data){ img.src = data; img.onclick = ()=>openPhotoModal(data); }
+    else { img.style.opacity=.3; }
   });
 }
 
@@ -914,13 +845,14 @@ function capturePhotoFromVideo(videoEl){
 
 async function registerMarcaje(emp, photoData){
   const today = todayStr();
-  const todays = (await getTodayRecordsForEmployee(emp.id, today)).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  const todays = App.records.filter(r=>r.employeeId===emp.id && r.fecha===today).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
   const last = todays[todays.length-1];
   const tipo = (last && last.tipo==='entrada') ? 'salida' : 'entrada';
 
-  const rec = { id: uid('REC'), employeeId: emp.id, tipo, timestamp: new Date().toISOString(), fecha: today, foto: photoData || null };
-  const ok = await addRecordDoc(rec);
-  if(!ok){ showToast('No se pudo guardar el marcaje. Revisa tu conexión.'); return; }
+  const rec = { id: uid('REC'), employeeId: emp.id, tipo, timestamp: new Date().toISOString(), fecha: today };
+  App.records.push(rec);
+  await storeSet('records', App.records);
+  if(photoData) await photoSet(rec.id, photoData);
 
   showKioskResult(emp, tipo, rec.timestamp);
 }
