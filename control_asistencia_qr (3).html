@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Control de Asistencia QR · Clínica Médica Santa Fe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --navy:#142848; --navy-light:#20345c; --teal:#0e8a83; --teal-light:#14b3a8;
+  --coral:#e8603c; --coral-light:#f2825f; --bg:#f4f6f7; --card:#ffffff;
+  --ink:#142030; --muted:#6b7686; --border:#e1e6ea; --success:#1f9d55; --danger:#d64545;
+  --radius:14px;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{
+  font-family:'Inter',sans-serif; background:var(--bg); color:var(--ink);
+  min-height:100vh; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif;}
+.mono{font-family:'JetBrains Mono',monospace;}
+button{font-family:inherit; cursor:pointer; border:none;}
+input,select{font-family:inherit;}
+.hidden{display:none !important;}
+
+/* ---------- Top bar ---------- */
+.topbar{
+  background:var(--navy); color:#fff; padding:14px 22px; display:flex;
+  align-items:center; justify-content:space-between; gap:12px;
+}
+.topbar .brand{display:flex; align-items:center; gap:10px;}
+.topbar .brand-mark{
+  width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--teal),var(--teal-light));
+  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px; flex-shrink:0;
+}
+.topbar .brand-text{line-height:1.15;}
+.topbar .brand-text strong{font-family:'Space Grotesk',sans-serif; font-size:15px; display:block;}
+.topbar .brand-text span{font-size:11px; color:#a9b6cc;}
+.topbar .actions{display:flex; gap:8px;}
+.btn-ghost{
+  background:rgba(255,255,255,.08); color:#fff; border:1px solid rgba(255,255,255,.18);
+  padding:8px 14px; border-radius:9px; font-size:13px; font-weight:500; transition:.15s;
+}
+.btn-ghost:hover{background:rgba(255,255,255,.16);}
+
+/* ---------- Layout ---------- */
+.wrap{max-width:1100px; margin:0 auto; padding:28px 20px 60px;}
+.center-screen{
+  min-height:calc(100vh - 62px); display:flex; align-items:center; justify-content:center; padding:20px;
+}
+
+/* ---------- Role select ---------- */
+.role-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:760px; width:100%;}
+@media(max-width:640px){.role-grid{grid-template-columns:1fr;}}
+.role-card{
+  background:var(--card); border:1px solid var(--border); border-radius:18px; padding:30px 26px;
+  text-align:left; transition:.2s; display:flex; flex-direction:column; gap:10px;
+}
+.role-card:hover{transform:translateY(-2px); box-shadow:0 12px 28px rgba(20,40,72,.1); border-color:var(--teal);}
+.role-card .icon{
+  width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+  font-size:22px; margin-bottom:4px;
+}
+.role-card.scan .icon{background:#e6f5f3; color:var(--teal);}
+.role-card.admin .icon{background:#fdece5; color:var(--coral);}
+.role-card h2{font-size:19px; margin-bottom:2px;}
+.role-card p{color:var(--muted); font-size:13.5px; line-height:1.5;}
+.role-card .go{font-size:13px; font-weight:600; color:var(--navy); margin-top:6px;}
+
+/* ---------- Cards / panels ---------- */
+.panel{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:24px;}
+.panel + .panel{margin-top:18px;}
+.field{margin-bottom:14px;}
+.field label{display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.03em;}
+.field input, .field select{
+  width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14.5px; color:var(--ink);
+  transition:.15s;
+}
+.field input:focus, .field select:focus{outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(14,138,131,.12);}
+.btn{
+  padding:12px 20px; border-radius:10px; font-weight:600; font-size:14px; transition:.15s; display:inline-flex; align-items:center; gap:8px;
+}
+.btn-primary{background:var(--teal); color:#fff;}
+.btn-primary:hover{background:#0b746e;}
+.btn-coral{background:var(--coral); color:#fff;}
+.btn-coral:hover{background:#d3512e;}
+.btn-outline{background:#fff; border:1.5px solid var(--border); color:var(--ink);}
+.btn-outline:hover{border-color:var(--navy);}
+.btn-sm{padding:8px 13px; font-size:12.5px; border-radius:8px;}
+.btn-danger{background:#fdecec; color:var(--danger);}
+.btn-danger:hover{background:#fadada;}
+.btn:disabled{opacity:.5; cursor:not-allowed;}
+.error-msg{background:#fdecec; color:var(--danger); padding:10px 13px; border-radius:9px; font-size:13px; margin-bottom:14px;}
+.hint{font-size:12px; color:var(--muted); margin-top:6px;}
+
+/* ---------- Login ---------- */
+.login-box{width:100%; max-width:380px;}
+.login-box .lock{
+  width:52px; height:52px; border-radius:14px; background:var(--navy); color:#fff; display:flex;
+  align-items:center; justify-content:center; font-size:22px; margin:0 auto 16px;
+}
+.login-box h2{text-align:center; font-size:20px; margin-bottom:4px;}
+.login-box p.sub{text-align:center; color:var(--muted); font-size:13px; margin-bottom:22px;}
+
+/* ---------- Tabs ---------- */
+.tabbar{display:flex; gap:6px; background:#eaeef0; padding:5px; border-radius:12px; margin-bottom:20px; width:fit-content;}
+.tab-btn{padding:9px 18px; border-radius:9px; font-size:13.5px; font-weight:600; color:var(--muted); background:transparent;}
+.tab-btn.active{background:#fff; color:var(--navy); box-shadow:0 1px 4px rgba(0,0,0,.08);}
+.section-title{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px;}
+.section-title h2{font-size:18px;}
+
+/* ---------- Employees ---------- */
+.emp-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin-top:16px;}
+.emp-card{border:1px solid var(--border); border-radius:14px; padding:16px; background:#fbfcfd;}
+.emp-card .qr-box{background:#fff; border:1px solid var(--border); border-radius:10px; padding:10px; display:flex; justify-content:center; margin-bottom:10px;}
+.emp-card h3{font-size:15px; margin-bottom:2px;}
+.emp-card .role{font-size:12px; color:var(--muted); margin-bottom:6px;}
+.emp-card .code{font-size:11px; color:var(--teal); background:#e6f5f3; padding:3px 8px; border-radius:6px; display:inline-block; margin-bottom:10px;}
+.emp-card .row-btns{display:flex; gap:6px; flex-wrap:wrap;}
+
+/* ---------- Kiosk ---------- */
+.kiosk-wrap{max-width:520px; margin:0 auto; width:100%;}
+.camera-frame{
+  position:relative; border-radius:20px; overflow:hidden; background:#0a1120; aspect-ratio:3/4; margin-bottom:16px;
+  border:3px solid var(--navy);
+}
+.camera-frame video{width:100%; height:100%; object-fit:cover; display:block;}
+.scan-reticle{
+  position:absolute; inset:14%; border:2.5px solid var(--teal-light); border-radius:16px; pointer-events:none;
+  box-shadow:0 0 0 999px rgba(10,17,32,.32);
+}
+.scan-line{
+  position:absolute; left:14%; right:14%; height:2px; background:var(--teal-light); box-shadow:0 0 8px var(--teal-light);
+  animation:scanmove 2.1s ease-in-out infinite; pointer-events:none;
+}
+@keyframes scanmove{0%{top:16%;}50%{top:82%;}100%{top:16%;}}
+.kiosk-status{
+  position:absolute; bottom:0; left:0; right:0; padding:14px 16px; background:rgba(10,17,32,.72); color:#fff;
+  text-align:center; font-size:13.5px; backdrop-filter:blur(3px);
+}
+.result-overlay{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:rgba(20,40,72,.94); color:#fff; text-align:center; padding:20px; gap:8px;
+}
+.result-overlay.entrada{background:rgba(31,157,85,.94);}
+.result-overlay.salida{background:rgba(232,96,60,.94);}
+.result-overlay .big-icon{font-size:38px;}
+.result-overlay h3{font-size:20px;}
+.result-overlay p{font-size:13px; opacity:.9;}
+.cam-controls{display:flex; gap:8px; justify-content:center; margin-bottom:18px;}
+.manual-toggle{text-align:center; margin-top:6px;}
+.manual-toggle a{color:var(--muted); font-size:12.5px; text-decoration:underline; cursor:pointer;}
+
+/* ---------- Reports ---------- */
+.filters-grid{display:grid; grid-template-columns:1.4fr 1fr 1fr auto; gap:12px; align-items:end;}
+@media(max-width:760px){.filters-grid{grid-template-columns:1fr 1fr;}}
+table.report-table{width:100%; border-collapse:collapse; margin-top:18px; font-size:13.5px;}
+table.report-table th{
+  text-align:left; padding:10px 12px; background:#f1f4f5; color:var(--muted); font-size:11.5px;
+  text-transform:uppercase; letter-spacing:.03em; font-weight:700; border-bottom:1px solid var(--border);
+}
+table.report-table td{padding:10px 12px; border-bottom:1px solid #eef1f2;}
+table.report-table tr:hover td{background:#fafbfc;}
+.badge{padding:3px 9px; border-radius:6px; font-size:11.5px; font-weight:600;}
+.badge.entrada{background:#e6f6ec; color:var(--success);}
+.badge.salida{background:#fdece5; color:var(--coral);}
+.thumb{width:34px; height:34px; border-radius:7px; object-fit:cover; border:1px solid var(--border); cursor:pointer;}
+.summary-bar{
+  display:flex; gap:24px; margin-top:18px; padding:16px 18px; background:#f7fafa; border:1px solid var(--border);
+  border-radius:12px; flex-wrap:wrap;
+}
+.summary-bar .stat .num{font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:700; color:var(--navy);}
+.summary-bar .stat .lbl{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+.empty-state{text-align:center; padding:40px 20px; color:var(--muted);}
+.empty-state .ic{font-size:30px; margin-bottom:10px;}
+
+/* Photo modal */
+.modal-bg{position:fixed; inset:0; background:rgba(10,17,32,.7); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px;}
+.modal-box{background:#fff; border-radius:16px; padding:16px; max-width:360px;}
+.modal-box img{width:100%; border-radius:10px;}
+.modal-box .close-row{text-align:right; margin-top:10px;}
+
+.toast{
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff;
+  padding:12px 20px; border-radius:10px; font-size:13.5px; z-index:100; box-shadow:0 8px 22px rgba(0,0,0,.25);
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">SF</div>
+    <div class="brand-text">
+      <strong>Clínica Médica Santa Fe</strong>
+      <span>Control de Asistencia QR</span>
+    </div>
+  </div>
+  <div class="actions" id="topbarActions"></div>
+</div>
+
+<div id="app"></div>
+
+<script>
+/* ===================== FIREBASE ===================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyAHpChFgv5GaHTbVvYyRNFLoxOnbPszm2Q",
+  authDomain: "asistencia-personal-94128.firebaseapp.com",
+  projectId: "asistencia-personal-94128",
+  storageBucket: "asistencia-personal-94128.firebasestorage.app",
+  messagingSenderId: "990458841430",
+  appId: "1:990458841430:web:50b3aeb162a5f53836eef7",
+  measurementId: "G-6DDGVX2S0T"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* ===================== ESTADO Y UTILIDADES ===================== */
+const App = {
+  view: 'home',
+  employees: [],
+  records: [],
+  config: null,
+  stream: null,
+  scanning: false,
+  facingMode: 'environment',
+  lastScanCode: null,
+  lastScanTime: 0,
+};
+
+const $app = document.getElementById('app');
+const $topbarActions = document.getElementById('topbarActions');
+
+function uid(prefix){ return prefix + '-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,5).toUpperCase(); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtTime(iso){ return new Date(iso).toLocaleTimeString('es-HN',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDate(d){ return new Date(d+'T00:00:00').toLocaleDateString('es-HN',{day:'2-digit',month:'short',year:'numeric'}); }
+function showToast(msg){
+  const t = document.createElement('div');
+  t.className='toast'; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2600);
+}
+
+/* ---------- Firestore helpers (compartido entre dispositivos) ---------- */
+async function loadConfig(){
+  try{
+    const doc = await db.collection('config').doc('main').get();
+    return doc.exists ? doc.data() : null;
+  }catch(e){ console.error('loadConfig', e); return null; }
+}
+async function saveConfig(cfg){
+  try{ await db.collection('config').doc('main').set(cfg); return true; }
+  catch(e){ console.error('saveConfig', e); return false; }
+}
+async function loadEmployees(){
+  try{
+    const snap = await db.collection('employees').get();
+    return snap.docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> (a.nombre||'').localeCompare(b.nombre||''));
+  }catch(e){ console.error('loadEmployees', e); return []; }
+}
+async function saveEmployee(emp){
+  try{
+    await db.collection('employees').doc(emp.id).set({
+      nombre: emp.nombre, puesto: emp.puesto, creado: emp.creado, activo: emp.activo
+    });
+    return true;
+  }catch(e){ console.error('saveEmployee', e); return false; }
+}
+async function deleteEmployeeDoc(id){
+  try{ await db.collection('employees').doc(id).delete(); return true; }
+  catch(e){ console.error('deleteEmployeeDoc', e); return false; }
+}
+async function addRecordDoc(rec){
+  try{ await db.collection('records').doc(rec.id).set(rec); return true; }
+  catch(e){ console.error('addRecordDoc', e); return false; }
+}
+async function getTodayRecordsForEmployee(employeeId, fecha){
+  try{
+    const snap = await db.collection('records').where('fecha','==',fecha).get();
+    return snap.docs.map(d=>d.data()).filter(r=>r.employeeId===employeeId);
+  }catch(e){ console.error('getTodayRecordsForEmployee', e); return []; }
+}
+async function getRecordsInRange(dateFrom, dateTo){
+  try{
+    const snap = await db.collection('records').where('fecha','>=',dateFrom).where('fecha','<=',dateTo).get();
+    return snap.docs.map(d=>d.data());
+  }catch(e){ console.error('getRecordsInRange', e); return []; }
+}
+
+async function loadAll(){
+  App.config = await loadConfig();
+  App.employees = await loadEmployees();
+}
+
+/* ===================== ROUTER ===================== */
+function render(){
+  $topbarActions.innerHTML = '';
+  if(App.view==='admin-dashboard'){
+    const b = document.createElement('button');
+    b.className='btn-ghost'; b.textContent='Cerrar panel';
+    b.onclick=()=>{ App.adminAuthed=false; goHome(); };
+    $topbarActions.appendChild(b);
+  } else if(App.view!=='home'){
+    const b = document.createElement('button');
+    b.className='btn-ghost'; b.textContent='← Inicio';
+    b.onclick=()=>{ stopCamera(); goHome(); };
+    $topbarActions.appendChild(b);
+  }
+
+  if(App.view==='home') return renderHome();
+  if(App.view==='kiosk') return renderKiosk();
+  if(App.view==='admin-login') return renderAdminLogin();
+  if(App.view==='admin-setup') return renderAdminSetup();
+  if(App.view==='admin-dashboard') return renderAdminDashboard();
+}
+
+function goHome(){ App.view='home'; render(); }
+
+/* ===================== HOME ===================== */
+function renderHome(){
+  $app.innerHTML = `
+  <div class="center-screen">
+    <div class="role-grid">
+      <button class="role-card scan" id="goKiosk">
+        <div class="icon">▣</div>
+        <h2>Terminal de marcaje</h2>
+        <p>Escanea tu código QR para registrar tu entrada o salida. Se tomará una fotografía automáticamente.</p>
+        <span class="go">Abrir terminal →</span>
+      </button>
+      <button class="role-card admin" id="goAdmin">
+        <div class="icon">⚙</div>
+        <h2>Panel administrativo</h2>
+        <p>Gestiona empleados, códigos QR, revisa registros por quincena/mes y descarga reportes.</p>
+        <span class="go">Ingresar →</span>
+      </button>
+    </div>
+  </div>`;
+  document.getElementById('goKiosk').onclick = async ()=>{
+    App.employees = await loadEmployees();
+    App.view='kiosk'; render();
+  };
+  document.getElementById('goAdmin').onclick = async ()=>{
+    App.config = await loadConfig();
+    App.employees = await loadEmployees();
+    App.view = App.config ? 'admin-login' : 'admin-setup';
+    render();
+  };
+}
+
+/* ===================== ADMIN AUTH ===================== */
+function renderAdminSetup(){
+  $app.innerHTML = `
+  <div class="center-screen">
+    <div class="panel login-box">
+      <div class="lock">🔑</div>
+      <h2>Crear contraseña de administrador</h2>
+      <p class="sub">Es la primera vez que se configura el panel. Esta contraseña se compartirá entre todos los dispositivos.</p>
+      <div id="setupError"></div>
+      <div class="field"><label>Contraseña</label><input type="password" id="pw1" minlength="4" placeholder="Mínimo 4 caracteres"></div>
+      <div class="field"><label>Confirmar contraseña</label><input type="password" id="pw2" placeholder="Repite la contraseña"></div>
+      <button class="btn btn-primary" style="width:100%; justify-content:center" id="setupBtn">Crear y continuar</button>
+    </div>
+  </div>`;
+  document.getElementById('setupBtn').onclick = async ()=>{
+    const pw1=document.getElementById('pw1').value, pw2=document.getElementById('pw2').value;
+    const err=document.getElementById('setupError');
+    if(pw1.length<4){ err.innerHTML='<div class="error-msg">La contraseña debe tener al menos 4 caracteres.</div>'; return; }
+    if(pw1!==pw2){ err.innerHTML='<div class="error-msg">Las contraseñas no coinciden.</div>'; return; }
+    await saveConfig({password: pw1});
+    App.config = {password:pw1};
+    App.adminAuthed = true;
+    App.view='admin-dashboard'; App.adminTab='empleados'; render();
+  };
+}
+
+function renderAdminLogin(){
+  $app.innerHTML = `
+  <div class="center-screen">
+    <div class="panel login-box">
+      <div class="lock">🔒</div>
+      <h2>Panel administrativo</h2>
+      <p class="sub">Ingresa la contraseña para continuar</p>
+      <div id="loginError"></div>
+      <div class="field"><label>Contraseña</label><input type="password" id="pwLogin" placeholder="••••••••"></div>
+      <button class="btn btn-primary" style="width:100%; justify-content:center" id="loginBtn">Ingresar</button>
+    </div>
+  </div>`;
+  const tryLogin = async ()=>{
+    const pw = document.getElementById('pwLogin').value;
+    if(pw === App.config.password){
+      App.adminAuthed=true; App.view='admin-dashboard'; App.adminTab='empleados'; render();
+    } else {
+      document.getElementById('loginError').innerHTML = '<div class="error-msg">Contraseña incorrecta.</div>';
+    }
+  };
+  document.getElementById('loginBtn').onclick = tryLogin;
+  document.getElementById('pwLogin').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
+}
+
+/* ===================== ADMIN DASHBOARD ===================== */
+function renderAdminDashboard(){
+  if(!App.adminAuthed){ App.view='admin-login'; return render(); }
+  $app.innerHTML = `
+  <div class="wrap">
+    <div class="tabbar">
+      <button class="tab-btn" data-tab="empleados">Empleados</button>
+      <button class="tab-btn" data-tab="registros">Registros y reportes</button>
+      <button class="tab-btn" data-tab="config">Configuración</button>
+    </div>
+    <div id="tabContent"></div>
+  </div>`;
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.tab===App.adminTab);
+    btn.onclick = ()=>{ App.adminTab = btn.dataset.tab; renderAdminDashboard(); };
+  });
+  const c = document.getElementById('tabContent');
+  if(App.adminTab==='empleados') renderEmpleadosTab(c);
+  else if(App.adminTab==='registros') renderRegistrosTab(c);
+  else renderConfigTab(c);
+}
+
+/* ---------- Tab: Empleados ---------- */
+function renderEmpleadosTab(container){
+  container.innerHTML = `
+    <div class="panel">
+      <div class="section-title"><h2>Nuevo empleado</h2></div>
+      <div id="empError"></div>
+      <div class="filters-grid" style="grid-template-columns:1fr 1fr auto;">
+        <div class="field" style="margin-bottom:0"><label>Nombre completo</label><input id="empNombre" placeholder="Ej. María Fernández"></div>
+        <div class="field" style="margin-bottom:0"><label>Puesto</label><input id="empPuesto" placeholder="Ej. Enfermería"></div>
+        <button class="btn btn-primary" id="addEmpBtn">+ Generar QR</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title"><h2>Empleados registrados (${App.employees.length})</h2></div>
+      <div class="emp-grid" id="empGrid"></div>
+    </div>
+    <div id="qrHidden" style="position:absolute; left:-9999px; top:-9999px;"></div>
+  `;
+  document.getElementById('addEmpBtn').onclick = async ()=>{
+    const nombre = document.getElementById('empNombre').value.trim();
+    const puesto = document.getElementById('empPuesto').value.trim();
+    const err = document.getElementById('empError');
+    if(!nombre){ err.innerHTML='<div class="error-msg">Escribe el nombre del empleado.</div>'; return; }
+    const emp = { id: uid('EMP'), nombre, puesto: puesto||'—', creado: new Date().toISOString(), activo:true };
+    const btn = document.getElementById('addEmpBtn'); btn.disabled = true; btn.textContent='Guardando…';
+    const ok = await saveEmployee(emp);
+    if(!ok){ err.innerHTML='<div class="error-msg">No se pudo guardar. Revisa tu conexión e intenta de nuevo.</div>'; btn.disabled=false; btn.textContent='+ Generar QR'; return; }
+    App.employees = await loadEmployees();
+    renderEmpleadosTab(container);
+  };
+  renderEmpGrid();
+}
+
+function renderEmpGrid(){
+  const grid = document.getElementById('empGrid');
+  if(!grid) return;
+  if(App.employees.length===0){
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="ic">👥</div>Aún no hay empleados. Agrega el primero arriba.</div>`;
+    return;
+  }
+  grid.innerHTML = App.employees.map(e => `
+    <div class="emp-card" data-id="${e.id}">
+      <div class="qr-box"><canvas id="qr-${e.id}" width="120" height="120"></canvas></div>
+      <h3>${esc(e.nombre)}</h3>
+      <div class="role">${esc(e.puesto)}</div>
+      <div class="code mono">${e.id}</div>
+      <div class="row-btns">
+        <button class="btn btn-outline btn-sm" data-act="badge">Tarjeta QR</button>
+        <button class="btn btn-danger btn-sm" data-act="del">Eliminar</button>
+      </div>
+    </div>`).join('');
+
+  App.employees.forEach(e=>{
+    const hidden = document.getElementById('qrHidden');
+    hidden.innerHTML = '';
+    new QRCode(hidden, { text: e.id, width:220, height:220, correctLevel: QRCode.CorrectLevel.M });
+    setTimeout(()=>{
+      const src = hidden.querySelector('canvas') || hidden.querySelector('img');
+      const target = document.getElementById('qr-'+e.id);
+      if(!target) return;
+      const ctx = target.getContext('2d');
+      if(src.tagName==='CANVAS'){ ctx.drawImage(src,0,0,120,120); }
+      else { const img=new Image(); img.onload=()=>ctx.drawImage(img,0,0,120,120); img.src=src.src; }
+    }, 60);
+  });
+
+  grid.querySelectorAll('.emp-card').forEach(card=>{
+    const id = card.dataset.id;
+    const emp = App.employees.find(x=>x.id===id);
+    card.querySelector('[data-act="badge"]').onclick = ()=> downloadBadge(emp);
+    card.querySelector('[data-act="del"]').onclick = async ()=>{
+      if(!confirm(`¿Eliminar a ${emp.nombre}? Sus registros históricos se conservarán.`)) return;
+      await deleteEmployeeDoc(id);
+      App.employees = App.employees.filter(x=>x.id!==id);
+      renderEmpGrid();
+    };
+  });
+}
+
+function downloadBadge(emp){
+  const hidden = document.getElementById('qrHidden');
+  hidden.innerHTML = '';
+  new QRCode(hidden, { text: emp.id, width:300, height:300, correctLevel: QRCode.CorrectLevel.M });
+  setTimeout(()=>{
+    const src = hidden.querySelector('canvas') || hidden.querySelector('img');
+    const c = document.createElement('canvas');
+    c.width = 380; c.height = 500;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle = '#142848'; ctx.fillRect(0,0,c.width,86);
+    ctx.fillStyle = '#fff'; ctx.font='600 18px Arial'; ctx.textAlign='center';
+    ctx.fillText('Clínica Médica Santa Fe', c.width/2, 38);
+    ctx.font='13px Arial'; ctx.fillStyle='#a9b6cc';
+    ctx.fillText('Gafete de identificación', c.width/2, 60);
+    const drawRest = (imgEl)=>{
+      ctx.drawImage(imgEl, 40, 116, 300, 300);
+      ctx.fillStyle = '#142030'; ctx.font='700 19px Arial'; ctx.textAlign='center';
+      ctx.fillText(emp.nombre, c.width/2, 448);
+      ctx.fillStyle='#6b7686'; ctx.font='13px Arial';
+      ctx.fillText(emp.puesto, c.width/2, 470);
+      ctx.fillStyle='#0e8a83'; ctx.font='600 12px monospace';
+      ctx.fillText(emp.id, c.width/2, 490);
+      const a = document.createElement('a');
+      a.download = `QR_${emp.nombre.replace(/\s+/g,'_')}.png`;
+      a.href = c.toDataURL('image/png');
+      a.click();
+    };
+    if(src.tagName==='CANVAS'){ drawRest(src); }
+    else { const img=new Image(); img.onload=()=>drawRest(img); img.src=src.src; }
+  }, 60);
+}
+
+/* ---------- Tab: Configuración ---------- */
+function renderConfigTab(container){
+  container.innerHTML = `
+    <div class="panel" style="max-width:420px;">
+      <div class="section-title"><h2>Cambiar contraseña</h2></div>
+      <div id="cfgError"></div>
+      <div class="field"><label>Contraseña actual</label><input type="password" id="cfgCurrent"></div>
+      <div class="field"><label>Contraseña nueva</label><input type="password" id="cfgNew"></div>
+      <button class="btn btn-primary" id="cfgBtn">Actualizar contraseña</button>
+      <p class="hint">Esta contraseña la comparten todos los que abran el panel administrativo en cualquier dispositivo.</p>
+    </div>
+    <div class="panel" style="max-width:520px;">
+      <div class="section-title"><h2>Importar empleados guardados</h2></div>
+      <p class="hint" style="margin-top:0; margin-bottom:12px;">Se cargaron automáticamente los 19 empleados de tu registro anterior. Presiona el botón para guardarlos en esta base de datos (solo hace falta hacerlo una vez).</p>
+      <div id="importStatus"></div>
+      <button class="btn btn-coral" id="importBtn">Importar 19 empleados</button>
+    </div>
+  `;
+  document.getElementById('cfgBtn').onclick = async ()=>{
+    const cur = document.getElementById('cfgCurrent').value;
+    const nw = document.getElementById('cfgNew').value;
+    const err = document.getElementById('cfgError');
+    if(cur !== App.config.password){ err.innerHTML='<div class="error-msg">La contraseña actual no coincide.</div>'; return; }
+    if(nw.length<4){ err.innerHTML='<div class="error-msg">La nueva contraseña debe tener al menos 4 caracteres.</div>'; return; }
+    App.config.password = nw;
+    await saveConfig(App.config);
+    err.innerHTML = '<div class="hint" style="color:var(--success)">Contraseña actualizada correctamente.</div>';
+  };
+
+  document.getElementById('importBtn').onclick = async ()=>{
+    const btn = document.getElementById('importBtn');
+    const status = document.getElementById('importStatus');
+    btn.disabled = true; btn.textContent = 'Importando…';
+    const empleadosPrevios = [{"id":"EMP-MSNXFGWH91D","nombre":"Daysi Zuniga","puesto":"A/E","creado":"2026-08-11T00:33:06.641Z","activo":true},{"id":"EMP-MSNXGBIX71G","nombre":"Li. Sofia Cabrera","puesto":"Lic. Enfermeria","creado":"2026-08-11T00:33:46.329Z","activo":true},{"id":"EMP-MSNXGXBTW2N","nombre":"Efrain Estevez","puesto":"A/E","creado":"2026-08-11T00:34:14.585Z","activo":true},{"id":"EMP-MSNXHHH5VC2","nombre":"Dra. Francis Guimel Rivera","puesto":"Dra","creado":"2026-08-11T00:34:40.697Z","activo":true},{"id":"EMP-MSNXIPL50YE","nombre":"Osiris Melendez","puesto":"A/E","creado":"2026-08-11T00:35:37.865Z","activo":true},{"id":"EMP-MSNXJH49P2M","nombre":"Glendy Barahora","puesto":"A/E","creado":"2026-08-11T00:36:13.545Z","activo":true},{"id":"EMP-MSNXK95T3MT","nombre":"Jexon Caballero","puesto":"A/E","creado":"2026-08-11T00:36:49.889Z","activo":true},{"id":"EMP-MSNXNXG0YGN","nombre":"Lic Sheyla Hernandez","puesto":"Lic Enfermeria","creado":"2026-08-11T00:39:41.328Z","activo":true},{"id":"EMP-MSNXOPWGVP0","nombre":"Alexa Katherine","puesto":"A/E","creado":"2026-08-11T00:40:18.208Z","activo":true},{"id":"EMP-MSNXPRYWX5Y","nombre":"Maritza Bonilla","puesto":"Cocina","creado":"2026-08-11T00:41:07.544Z","activo":true},{"id":"EMP-MSNXQA28V7X","nombre":"Carol","puesto":"Aseo","creado":"2026-08-11T00:41:30.992Z","activo":true},{"id":"EMP-MSNXQSIGQXL","nombre":"Miguel","puesto":"Mantenimiento","creado":"2026-08-11T00:41:54.904Z","activo":true},{"id":"EMP-MSNXS9FSV9A","nombre":"Maria Sara","puesto":"A/E","creado":"2026-08-11T00:43:03.496Z","activo":true},{"id":"EMP-MSNXSQ3SR16","nombre":"Dr Ortega","puesto":"Dr","creado":"2026-08-11T00:43:25.096Z","activo":true},{"id":"EMP-MSNXT6YWN2A","nombre":"Dr. Daniel Osegueda","puesto":"Dr","creado":"2026-08-11T00:43:46.952Z","activo":true},{"id":"EMP-MSNXTPDC280","nombre":"Dr. Emilio Osegueda","puesto":"Dr","creado":"2026-08-11T00:44:10.800Z","activo":true},{"id":"EMP-MSNXU8DBSFZ","nombre":"Dr. Montalvan","puesto":"Dr","creado":"2026-08-11T00:44:35.423Z","activo":true},{"id":"EMP-MSNXUQBSEHQ","nombre":"Dr Carlos Enamorado","puesto":"Dr","creado":"2026-08-11T00:44:58.696Z","activo":true},{"id":"EMP-MSNXV9FZAGQ","nombre":"Dra Ingrid Morales","puesto":"Dra","creado":"2026-08-11T00:45:23.471Z","activo":true}];
+    let ok=0, fail=0;
+    for(const e of empleadosPrevios){
+      const success = await saveEmployee(e);
+      if(success) ok++; else fail++;
+      status.innerHTML = `<div class="hint">Importando… ${ok+fail}/${empleadosPrevios.length}</div>`;
+    }
+    App.employees = await loadEmployees();
+    status.innerHTML = `<div class="hint" style="color:var(--success)">Listo: ${ok} empleados importados${fail? ', '+fail+' fallaron':''}. Ve a la pestaña Empleados para verlos.</div>`;
+    btn.textContent = 'Importar 19 empleados';
+    btn.disabled = false;
+  };
+}
+
+/* ---------- Tab: Registros y reportes ---------- */
+function renderRegistrosTab(container){
+  const now = new Date();
+  const monthDefault = now.toISOString().slice(0,7);
+  container.innerHTML = `
+    <div class="panel">
+      <div class="section-title"><h2>Generar reporte</h2></div>
+      <div class="filters-grid">
+        <div class="field" style="margin-bottom:0">
+          <label>Empleado</label>
+          <select id="fEmp">
+            <option value="all">Todos los empleados</option>
+            ${App.employees.map(e=>`<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0"><label>Mes</label><input type="month" id="fMonth" value="${monthDefault}"></div>
+        <div class="field" style="margin-bottom:0">
+          <label>Periodo</label>
+          <select id="fPeriodo">
+            <option value="q1">Quincena 1 (día 1–15)</option>
+            <option value="q2">Quincena 2 (día 16–fin)</option>
+            <option value="full">Mes completo</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="genBtn">Generar</button>
+      </div>
+    </div>
+    <div class="panel" id="reportPanel"><div class="empty-state"><div class="ic">📋</div>Selecciona un empleado y periodo, luego pulsa "Generar".</div></div>
+  `;
+  document.getElementById('genBtn').onclick = generateReport;
+}
+
+function computeShifts(recordsForEmpDay){
+  // Empareja entrada/salida en orden cronológico
+  const sorted = recordsForEmpDay.slice().sort((a,b)=> new Date(a.timestamp)-new Date(b.timestamp));
+  const shifts = [];
+  let pendingIn = null;
+  sorted.forEach(r=>{
+    if(r.tipo==='entrada'){ pendingIn = r; }
+    else if(r.tipo==='salida'){
+      shifts.push({ entrada: pendingIn, salida: r });
+      pendingIn = null;
+    }
+  });
+  if(pendingIn) shifts.push({ entrada: pendingIn, salida: null });
+  return shifts;
+}
+
+let currentReport = null;
+
+async function generateReport(){
+  const empFilter = document.getElementById('fEmp').value;
+  const month = document.getElementById('fMonth').value; // YYYY-MM
+  const periodo = document.getElementById('fPeriodo').value;
+  const panel = document.getElementById('reportPanel');
+  if(!month){ panel.innerHTML = '<div class="error-msg">Selecciona un mes válido.</div>'; return; }
+
+  const [y,m] = month.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  let dayFrom=1, dayTo=lastDay;
+  if(periodo==='q1'){ dayFrom=1; dayTo=15; }
+  else if(periodo==='q2'){ dayFrom=16; dayTo=lastDay; }
+  const dateFrom = `${month}-${String(dayFrom).padStart(2,'0')}`;
+  const dateTo = `${month}-${String(dayTo).padStart(2,'0')}`;
+
+  panel.innerHTML = '<div class="empty-state"><div class="ic">⏳</div>Cargando registros…</div>';
+  let recs = await getRecordsInRange(dateFrom, dateTo);
+  if(empFilter!=='all') recs = recs.filter(r=>r.employeeId===empFilter);
+
+  // Agrupar por empleado + fecha
+  const groups = {};
+  recs.forEach(r=>{
+    const key = r.employeeId+'|'+r.fecha;
+    (groups[key] = groups[key]||[]).push(r);
+  });
+
+  const rows = [];
+  let totalMinutes = 0;
+  Object.entries(groups).forEach(([key, list])=>{
+    const [empId, fecha] = key.split('|');
+    const emp = App.employees.find(e=>e.id===empId);
+    const shifts = computeShifts(list);
+    shifts.forEach(s=>{
+      let minutos = null;
+      if(s.entrada && s.salida){
+        minutos = Math.round((new Date(s.salida.timestamp) - new Date(s.entrada.timestamp))/60000);
+        totalMinutes += minutos;
+      }
+      rows.push({
+        empleado: emp ? emp.nombre : '(empleado eliminado)',
+        empId, fecha,
+        entrada: s.entrada ? fmtTime(s.entrada.timestamp) : '—',
+        entradaFoto: s.entrada ? (s.entrada.foto || null) : null,
+        salida: s.salida ? fmtTime(s.salida.timestamp) : '— (pendiente)',
+        salidaFoto: s.salida ? (s.salida.foto || null) : null,
+        horas: minutos!==null ? (minutos/60).toFixed(2) : '—',
+      });
+    });
+  });
+  rows.sort((a,b)=> a.fecha===b.fecha ? a.empleado.localeCompare(b.empleado) : a.fecha.localeCompare(b.fecha));
+
+  currentReport = { rows, month, periodo, dateFrom, dateTo, empFilter,
+    empName: empFilter==='all' ? 'Todos los empleados' : (App.employees.find(e=>e.id===empFilter)||{}).nombre };
+
+  const periodoLabel = periodo==='q1' ? `Quincena 1 (1–15 ${monthLabel(month)})` : periodo==='q2' ? `Quincena 2 (16–${lastDay} ${monthLabel(month)})` : `Mes completo (${monthLabel(month)})`;
+
+  if(rows.length===0){
+    panel.innerHTML = `<div class="empty-state"><div class="ic">🗂️</div>No hay registros para ${esc(periodoLabel)}.</div>`;
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="section-title">
+      <h2>${esc(periodoLabel)} — ${esc(currentReport.empName)}</h2>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-outline btn-sm" id="dlExcel">⬇ Excel</button>
+        <button class="btn btn-coral btn-sm" id="dlPdf">⬇ PDF</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+    <table class="report-table">
+      <thead><tr><th>Empleado</th><th>Fecha</th><th>Entrada</th><th>Foto</th><th>Salida</th><th>Foto</th><th>Horas</th></tr></thead>
+      <tbody>
+        ${rows.map(r=>`
+          <tr>
+            <td>${esc(r.empleado)}</td>
+            <td>${fmtDate(r.fecha)}</td>
+            <td><span class="badge entrada">${r.entrada}</span></td>
+            <td>${r.entradaFoto ? `<img class="thumb photo-btn" data-src="${r.entradaFoto}" src="${r.entradaFoto}" alt="foto">` : '—'}</td>
+            <td><span class="badge salida">${r.salida}</span></td>
+            <td>${r.salidaFoto ? `<img class="thumb photo-btn" data-src="${r.salidaFoto}" src="${r.salidaFoto}" alt="foto">` : '—'}</td>
+            <td class="mono">${r.horas}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div class="summary-bar">
+      <div class="stat"><div class="num">${rows.length}</div><div class="lbl">Turnos registrados</div></div>
+      <div class="stat"><div class="num">${(totalMinutes/60).toFixed(1)}</div><div class="lbl">Horas totales</div></div>
+    </div>
+  `;
+
+  document.getElementById('dlExcel').onclick = ()=>exportExcel(currentReport, periodoLabel);
+  document.getElementById('dlPdf').onclick = ()=>exportPdf(currentReport, periodoLabel);
+
+  panel.querySelectorAll('.photo-btn').forEach(img=>{
+    img.onclick = ()=>openPhotoModal(img.dataset.src);
+  });
+}
+
+function monthLabel(m){
+  const [y,mo] = m.split('-').map(Number);
+  return new Date(y, mo-1, 1).toLocaleDateString('es-HN',{month:'long', year:'numeric'});
+}
+
+function openPhotoModal(src){
+  const bg = document.createElement('div');
+  bg.className='modal-bg';
+  bg.innerHTML = `<div class="modal-box"><img src="${src}"><div class="close-row"><button class="btn btn-outline btn-sm">Cerrar</button></div></div>`;
+  bg.querySelector('button').onclick = ()=>bg.remove();
+  bg.onclick = (e)=>{ if(e.target===bg) bg.remove(); };
+  document.body.appendChild(bg);
+}
+
+/* ---------- Exportar Excel ---------- */
+function exportExcel(report, periodoLabel){
+  const data = report.rows.map(r=>({
+    Empleado: r.empleado, Fecha: fmtDate(r.fecha), Entrada: r.entrada, Salida: r.salida, 'Horas trabajadas': r.horas
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{wch:26},{wch:16},{wch:10},{wch:16},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
+  XLSX.writeFile(wb, `Asistencia_${report.empName.replace(/\s+/g,'_')}_${report.month}_${report.periodo}.xlsx`);
+}
+
+/* ---------- Exportar PDF ---------- */
+function exportPdf(report, periodoLabel){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(14); doc.setTextColor(20,40,72);
+  doc.text('Clínica Médica Santa Fe', 14, 18);
+  doc.setFontSize(11); doc.setTextColor(90,90,90);
+  doc.text('Reporte de asistencia — ' + periodoLabel, 14, 26);
+  doc.text('Empleado: ' + report.empName, 14, 33);
+  doc.setFontSize(9); doc.setTextColor(140,140,140);
+  doc.text('Generado el ' + new Date().toLocaleString('es-HN'), 14, 39);
+
+  doc.autoTable({
+    startY: 45,
+    head: [['Empleado','Fecha','Entrada','Salida','Horas']],
+    body: report.rows.map(r=>[r.empleado, fmtDate(r.fecha), r.entrada, r.salida, r.horas]),
+    headStyles:{ fillColor:[20,40,72] },
+    styles:{ fontSize:9 },
+    alternateRowStyles:{ fillColor:[247,250,250] },
+  });
+
+  const totalHoras = report.rows.reduce((s,r)=> s + (isNaN(parseFloat(r.horas)) ? 0 : parseFloat(r.horas)), 0);
+  const finalY = doc.lastAutoTable.finalY || 45;
+  doc.setFontSize(10); doc.setTextColor(20,40,72);
+  doc.text(`Total de horas: ${totalHoras.toFixed(2)}   ·   Turnos: ${report.rows.length}`, 14, finalY + 10);
+
+  doc.save(`Asistencia_${report.empName.replace(/\s+/g,'_')}_${report.month}_${report.periodo}.pdf`);
+}
+
+/* ===================== KIOSK (Escaneo QR + foto) ===================== */
+function renderKiosk(){
+  $app.innerHTML = `
+  <div class="wrap kiosk-wrap">
+    <div class="camera-frame" id="camFrame">
+      <video id="video" playsinline autoplay muted></video>
+      <div class="scan-reticle"></div>
+      <div class="scan-line"></div>
+      <div class="kiosk-status" id="kioskStatus">Iniciando cámara…</div>
+    </div>
+    <div class="cam-controls">
+      <button class="btn btn-outline btn-sm" id="flipCam">🔄 Cambiar cámara</button>
+    </div>
+    <div class="manual-toggle"><a id="manualLink">¿La cámara no funciona? Registrar manualmente</a></div>
+    <div id="manualBox" class="panel hidden" style="margin-top:14px;">
+      <div class="field"><label>Código del empleado</label><input id="manualCode" placeholder="Ej. EMP-XXXXXX" class="mono"></div>
+      <div class="field"><label>Fotografía</label><input type="file" id="manualPhoto" accept="image/*" capture="environment"></div>
+      <button class="btn btn-primary" id="manualSubmit" style="width:100%; justify-content:center">Registrar marcaje</button>
+      <div id="manualError"></div>
+    </div>
+  </div>`;
+
+  document.getElementById('manualLink').onclick = ()=>{
+    document.getElementById('manualBox').classList.toggle('hidden');
+  };
+  document.getElementById('manualSubmit').onclick = handleManualSubmit;
+  document.getElementById('flipCam').onclick = ()=>{
+    App.facingMode = App.facingMode==='environment' ? 'user' : 'environment';
+    startCamera();
+  };
+
+  startCamera();
+}
+
+async function startCamera(){
+  stopCamera();
+  const status = document.getElementById('kioskStatus');
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    status.textContent = 'Este navegador no permite usar la cámara aquí. Usa el registro manual abajo.';
+    return;
+  }
+
+  try{
+    App.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: App.facingMode }, audio:false });
+    const video = document.getElementById('video');
+    video.srcObject = App.stream;
+    await video.play();
+    status.textContent = 'Coloca tu código QR frente a la cámara';
+    App.scanning = true;
+    requestAnimationFrame(scanLoop);
+  }catch(e){
+    console.error('Camera error:', e.name, e.message);
+    let msg = 'No se pudo acceder a la cámara (' + e.name + '). Usa el registro manual abajo.';
+    if(e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError'){
+      msg = 'Permiso de cámara bloqueado. Toca el ícono 🔒 o de cámara junto a la dirección del navegador, permite el acceso y recarga la página.';
+    } else if(e.name === 'NotFoundError' || e.name === 'DevicesNotFoundError'){
+      msg = 'No se detectó ninguna cámara en este dispositivo. Usa el registro manual abajo.';
+    } else if(e.name === 'NotReadableError' || e.name === 'TrackStartError'){
+      msg = 'La cámara está siendo usada por otra aplicación. Cierra otras apps que la usen e intenta de nuevo.';
+    } else if(e.name === 'OverconstrainedError'){
+      msg = 'La cámara solicitada no está disponible en este dispositivo. Intenta con "Cambiar cámara".';
+    } else if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
+      msg = 'La cámara requiere una conexión segura (https://). Abre esta página desde un enlace https.';
+    }
+    status.textContent = msg;
+  }
+}
+
+function stopCamera(){
+  App.scanning = false;
+  if(App.stream){ App.stream.getTracks().forEach(t=>t.stop()); App.stream=null; }
+}
+
+function scanLoop(){
+  if(!App.scanning) return;
+  const video = document.getElementById('video');
+  if(video && video.readyState===video.HAVE_ENOUGH_DATA){
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+    const code = jsQR(imgData.data, imgData.width, imgData.height);
+    if(code && code.data){
+      const now = Date.now();
+      if(code.data !== App.lastScanCode || now - App.lastScanTime > 6000){
+        App.lastScanCode = code.data; App.lastScanTime = now;
+        handleScannedCode(code.data, video);
+      }
+    }
+  }
+  requestAnimationFrame(scanLoop);
+}
+
+async function handleScannedCode(code, videoEl){
+  const emp = App.employees.find(e=>e.id===code);
+  const status = document.getElementById('kioskStatus');
+  if(!emp){
+    status.textContent = 'Código no reconocido: ' + code;
+    return;
+  }
+  App.scanning = false; // pausar mientras procesamos
+  status.textContent = 'Procesando…';
+
+  const photoData = capturePhotoFromVideo(videoEl);
+  await registerMarcaje(emp, photoData);
+
+  setTimeout(()=>{ App.scanning = true; requestAnimationFrame(scanLoop); document.getElementById('kioskStatus') && (document.getElementById('kioskStatus').textContent='Coloca tu código QR frente a la cámara'); }, 3000);
+}
+
+function capturePhotoFromVideo(videoEl){
+  const c = document.createElement('canvas');
+  const w = 320, h = Math.round(w * (videoEl.videoHeight/videoEl.videoWidth || 0.75));
+  c.width=w; c.height=h;
+  c.getContext('2d').drawImage(videoEl, 0,0,w,h);
+  return c.toDataURL('image/jpeg', 0.55);
+}
+
+async function registerMarcaje(emp, photoData){
+  const today = todayStr();
+  const todays = (await getTodayRecordsForEmployee(emp.id, today)).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  const last = todays[todays.length-1];
+  const tipo = (last && last.tipo==='entrada') ? 'salida' : 'entrada';
+
+  const rec = { id: uid('REC'), employeeId: emp.id, tipo, timestamp: new Date().toISOString(), fecha: today, foto: photoData || null };
+  const ok = await addRecordDoc(rec);
+  if(!ok){ showToast('No se pudo guardar el marcaje. Revisa tu conexión.'); return; }
+
+  showKioskResult(emp, tipo, rec.timestamp);
+}
+
+function showKioskResult(emp, tipo, timestamp){
+  const frame = document.getElementById('camFrame');
+  if(!frame) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'result-overlay ' + tipo;
+  overlay.innerHTML = `
+    <div class="big-icon">${tipo==='entrada' ? '✓' : '👋'}</div>
+    <h3>${tipo==='entrada' ? 'Entrada registrada' : 'Salida registrada'}</h3>
+    <p>${esc(emp.nombre)} · ${fmtTime(timestamp)}</p>`;
+  frame.appendChild(overlay);
+  setTimeout(()=>overlay.remove(), 2600);
+}
+
+async function handleManualSubmit(){
+  const code = document.getElementById('manualCode').value.trim().toUpperCase();
+  const fileInput = document.getElementById('manualPhoto');
+  const err = document.getElementById('manualError');
+  const emp = App.employees.find(e=>e.id===code);
+  if(!emp){ err.innerHTML = '<div class="error-msg">Código de empleado no encontrado.</div>'; return; }
+
+  let photoData = null;
+  if(fileInput.files && fileInput.files[0]){
+    photoData = await new Promise(res=>{
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        const img = new Image();
+        img.onload = ()=>{
+          const c = document.createElement('canvas');
+          const w=320, h=Math.round(w*(img.height/img.width||0.75));
+          c.width=w; c.height=h;
+          c.getContext('2d').drawImage(img,0,0,w,h);
+          res(c.toDataURL('image/jpeg',0.55));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(fileInput.files[0]);
+    });
+  }
+  await registerMarcaje(emp, photoData);
+  err.innerHTML = `<div class="hint" style="color:var(--success)">Marcaje registrado para ${esc(emp.nombre)}.</div>`;
+  document.getElementById('manualCode').value='';
+  fileInput.value='';
+}
+
+/* ===================== INICIO ===================== */
+(async function init(){
+  await loadAll();
+  render();
+})();
+</script>
+</body>
+</html>
